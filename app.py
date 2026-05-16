@@ -1,4 +1,7 @@
-import os
+from pathlib import Path
+import zipfile
+
+updated_code = r'''import os
 import time
 import requests
 from flask import Flask
@@ -6,50 +9,73 @@ from threading import Thread
 
 app = Flask(__name__)
 
-# =========================================
-# ENV VARS
-# =========================================
-
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+CHAT_ID = str(os.getenv("TELEGRAM_CHAT_ID"))
 API_KEY = os.getenv("APISPORTS_KEY")
-
-# =========================================
-# SETTINGS
-# =========================================
 
 BUNDESLIGA_ID = 78
 BAYERN_TEAM_ID = 157
 
-enabled = True
+enabled = False
 already_alerted = False
+last_update_id = None
 
-# =========================================
-# TELEGRAM SEND
-# =========================================
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": text
-    }
-
+    payload = {"chat_id": CHAT_ID, "text": text}
     requests.post(url, data=payload)
 
-# =========================================
-# CHECK MATCH
-# =========================================
+
+def check_commands():
+    global enabled, last_update_id
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    params = {"timeout": 10}
+
+    if last_update_id is not None:
+        params["offset"] = last_update_id + 1
+
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        return
+
+    data = response.json()
+
+    for update in data.get("result", []):
+        last_update_id = update["update_id"]
+
+        message = update.get("message", {})
+        chat = message.get("chat", {})
+        text = message.get("text", "")
+
+        if str(chat.get("id")) != CHAT_ID:
+            continue
+
+        if text == "/start":
+            enabled = True
+            send_telegram_message("✅ Bayern Bot aktiviert.")
+
+        elif text == "/stop":
+            enabled = False
+            send_telegram_message("⛔ Bayern Bot deaktiviert.")
+
+        elif text == "/status":
+            if enabled:
+                send_telegram_message("✅ Status: Bayern Bot ist aktiviert.")
+            else:
+                send_telegram_message("⛔ Status: Bayern Bot ist deaktiviert.")
+
+        elif text == "/test":
+            send_telegram_message("Goal for Bet")
+
 
 def check_bayern_match():
     global already_alerted
 
     url = "https://v3.football.api-sports.io/fixtures?live=all"
-
-    headers = {
-        "x-apisports-key": API_KEY
-    }
+    headers = {"x-apisports-key": API_KEY}
 
     response = requests.get(url, headers=headers)
 
@@ -58,10 +84,7 @@ def check_bayern_match():
 
     data = response.json()
 
-    fixtures = data.get("response", [])
-
-    for match in fixtures:
-
+    for match in data.get("response", []):
         league_id = match["league"]["id"]
 
         if league_id != BUNDESLIGA_ID:
@@ -79,8 +102,8 @@ def check_bayern_match():
         goals_home = match["goals"]["home"]
         goals_away = match["goals"]["away"]
 
-        bayern_goals = 0
-        opponent_goals = 0
+        if goals_home is None or goals_away is None:
+            continue
 
         if home_id == BAYERN_TEAM_ID:
             bayern_goals = goals_home
@@ -90,44 +113,47 @@ def check_bayern_match():
             opponent_goals = goals_home
 
         if bayern_goals < opponent_goals:
-
             if not already_alerted:
                 send_telegram_message("Goal for Bet")
                 already_alerted = True
-
         else:
             already_alerted = False
 
-# =========================================
-# BOT LOOP
-# =========================================
 
 def background_loop():
     while True:
+        try:
+            check_commands()
 
-        if enabled:
-            try:
+            if enabled:
                 check_bayern_match()
-            except Exception as e:
-                print(e)
 
-        time.sleep(60)
+        except Exception as e:
+            print(e)
 
-# =========================================
-# SIMPLE WEB SERVER
-# =========================================
+        time.sleep(10)
+
 
 @app.route("/")
 def home():
-    return "Bayern Bot Running"
+    if enabled:
+        return "Bayern Bot Running - ACTIVE"
+    return "Bayern Bot Running - INACTIVE"
 
-# =========================================
-# START
-# =========================================
 
 if __name__ == "__main__":
-
     thread = Thread(target=background_loop)
+    thread.daemon = True
     thread.start()
 
     app.run(host="0.0.0.0", port=10000)
+'''
+
+path = Path("/mnt/data/app_updated.py")
+path.write_text(updated_code, encoding="utf-8")
+
+zip_path = "/mnt/data/bayern-bot-update.zip"
+with zipfile.ZipFile(zip_path, "w") as zf:
+    zf.write(path, arcname="app.py")
+
+print(zip_path)

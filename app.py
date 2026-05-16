@@ -18,26 +18,22 @@ already_alerted = False
 last_update_id = None
 
 
+def log(message):
+    print(message, flush=True)
+
+
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": text
-    }
-
-    requests.post(url, data=payload)
+    payload = {"chat_id": CHAT_ID, "text": text}
+    response = requests.post(url, data=payload)
+    log(f"Telegram sendMessage status: {response.status_code}")
 
 
 def check_commands():
-    global enabled
-    global last_update_id
+    global enabled, last_update_id
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-
-    params = {
-        "timeout": 10
-    }
+    params = {"timeout": 10}
 
     if last_update_id is not None:
         params["offset"] = last_update_id + 1
@@ -45,59 +41,66 @@ def check_commands():
     response = requests.get(url, params=params)
 
     if response.status_code != 200:
+        log(f"getUpdates Fehler: {response.status_code}")
         return
 
     data = response.json()
 
     for update in data.get("result", []):
-
         last_update_id = update["update_id"]
 
         message = update.get("message", {})
         chat = message.get("chat", {})
-        text = message.get("text", "")
+        text = message.get("text", "").strip().lower()
+
+        log(f"Telegram Befehl empfangen: {text}")
 
         if str(chat.get("id")) != CHAT_ID:
+            log("Falsche Chat-ID ignoriert.")
             continue
 
-        if text == "/start":
+        if text in ["/start", "start"]:
+            log("START wird ausgeführt.")
             enabled = True
-            send_telegram_message("✅ Bayern Bot aktiviert.")
+            send_telegram_message("✅ Start wurde empfangen. Bayern Bot wird aktiviert.")
 
-        elif text == "/stop":
+        elif text in ["/stop", "stop", "stopp"]:
+            log("STOP wird ausgeführt.")
             enabled = False
-            send_telegram_message("⛔ Bayern Bot deaktiviert.")
+            send_telegram_message("⛔ Stopp wurde empfangen. Bayern Bot wird deaktiviert.")
 
-        elif text == "/status":
-
+        elif text in ["/status", "status"]:
+            log("STATUS wird ausgeführt.")
             if enabled:
-                send_telegram_message("✅ Status: Bayern Bot ist aktiviert.")
+                send_telegram_message("✅ Status wurde abgefragt: Bayern Bot ist AKTIV.")
             else:
-                send_telegram_message("⛔ Status: Bayern Bot ist deaktiviert.")
+                send_telegram_message("⛔ Status wurde abgefragt: Bayern Bot ist INAKTIV.")
 
-        elif text == "/test":
+        elif text in ["/test", "test"]:
+            log("TEST wird ausgeführt.")
             send_telegram_message("Goal for Bet")
+
+        else:
+            send_telegram_message("Befehl nicht erkannt. Nutze: Start, Stopp, Status oder Test.")
 
 
 def check_bayern_match():
-
     global already_alerted
 
-    url = "https://v3.football.api-sports.io/fixtures?live=all"
+    log("Prüfe Live-Spiele...")
 
-    headers = {
-        "x-apisports-key": API_KEY
-    }
+    url = "https://v3.football.api-sports.io/fixtures?live=all"
+    headers = {"x-apisports-key": API_KEY}
 
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
+        log(f"API-Football Fehler: {response.status_code}")
         return
 
     data = response.json()
 
     for match in data.get("response", []):
-
         league_id = match["league"]["id"]
 
         if league_id != BUNDESLIGA_ID:
@@ -125,44 +128,41 @@ def check_bayern_match():
             bayern_goals = goals_away
             opponent_goals = goals_home
 
-        if bayern_goals < opponent_goals:
+        log(f"Bayern Spielstand: Bayern {bayern_goals} - Gegner {opponent_goals}")
 
+        if bayern_goals < opponent_goals:
             if not already_alerted:
+                log("Bayern liegt zurück. Alarm wird gesendet.")
                 send_telegram_message("Goal for Bet")
                 already_alerted = True
-
         else:
             already_alerted = False
 
 
 def background_loop():
+    log("Bayern Bot gestartet.")
 
     while True:
-
         try:
-
             check_commands()
 
             if enabled:
                 check_bayern_match()
 
         except Exception as e:
-            print(e)
+            log(f"Fehler im Loop: {e}")
 
         time.sleep(10)
 
 
 @app.route("/")
 def home():
-
     if enabled:
         return "Bayern Bot Running - ACTIVE"
-
     return "Bayern Bot Running - INACTIVE"
 
 
 if __name__ == "__main__":
-
     thread = Thread(target=background_loop)
     thread.daemon = True
     thread.start()

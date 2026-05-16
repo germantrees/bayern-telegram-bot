@@ -4,12 +4,6 @@ import requests
 from flask import Flask
 from threading import Thread
 
-
-import time
-import requests
-from flask import Flask
-from threading import Thread
-
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -26,15 +20,24 @@ last_update_id = None
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
+
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text
+    }
+
     requests.post(url, data=payload)
 
 
 def check_commands():
-    global enabled, last_update_id
+    global enabled
+    global last_update_id
 
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-    params = {"timeout": 10}
+
+    params = {
+        "timeout": 10
+    }
 
     if last_update_id is not None:
         params["offset"] = last_update_id + 1
@@ -47,6 +50,7 @@ def check_commands():
     data = response.json()
 
     for update in data.get("result", []):
+
         last_update_id = update["update_id"]
 
         message = update.get("message", {})
@@ -65,6 +69,7 @@ def check_commands():
             send_telegram_message("⛔ Bayern Bot deaktiviert.")
 
         elif text == "/status":
+
             if enabled:
                 send_telegram_message("✅ Status: Bayern Bot ist aktiviert.")
             else:
@@ -75,10 +80,14 @@ def check_commands():
 
 
 def check_bayern_match():
+
     global already_alerted
 
     url = "https://v3.football.api-sports.io/fixtures?live=all"
-    headers = {"x-apisports-key": API_KEY}
+
+    headers = {
+        "x-apisports-key": API_KEY
+    }
 
     response = requests.get(url, headers=headers)
 
@@ -88,6 +97,7 @@ def check_bayern_match():
     data = response.json()
 
     for match in data.get("response", []):
+
         league_id = match["league"]["id"]
 
         if league_id != BUNDESLIGA_ID:
@@ -116,16 +126,21 @@ def check_bayern_match():
             opponent_goals = goals_home
 
         if bayern_goals < opponent_goals:
+
             if not already_alerted:
                 send_telegram_message("Goal for Bet")
                 already_alerted = True
+
         else:
             already_alerted = False
 
 
 def background_loop():
+
     while True:
+
         try:
+
             check_commands()
 
             if enabled:
@@ -139,24 +154,17 @@ def background_loop():
 
 @app.route("/")
 def home():
+
     if enabled:
         return "Bayern Bot Running - ACTIVE"
+
     return "Bayern Bot Running - INACTIVE"
 
 
 if __name__ == "__main__":
+
     thread = Thread(target=background_loop)
     thread.daemon = True
     thread.start()
 
     app.run(host="0.0.0.0", port=10000)
-'''
-
-path = Path("/mnt/data/app_updated.py")
-path.write_text(updated_code, encoding="utf-8")
-
-zip_path = "/mnt/data/bayern-bot-update.zip"
-with zipfile.ZipFile(zip_path, "w") as zf:
-    zf.write(path, arcname="app.py")
-
-print(zip_path)

@@ -4,7 +4,7 @@ import requests
 from flask import Flask
 from threading import Thread
 
-updated_code = r'''import os
+
 import time
 import requests
 from flask import Flask

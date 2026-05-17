@@ -162,9 +162,9 @@ def home():
     return "Bayern Bot Running - INACTIVE"
 
 
-if __name__ == "__main__":
-    thread = Thread(target=background_loop)
-    thread.daemon = True
-    thread.start()
+thread = Thread(target=background_loop)
+thread.daemon = True
+thread.start()
 
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
